@@ -1,8 +1,13 @@
+require("dotenv").config()
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const express = require('express');
 const cors = require("cors")
-require("dotenv").config()
+
 const port = process.env.PORT 
+
+const Stripe = require("stripe"); 
+const stripe = new Stripe(process.env.STRIPE_SECRET);
+const crypto = require("crypto");
 
 const app = express();
 app.use(cors());
@@ -55,6 +60,7 @@ async function run() {
     const database = client.db("roktosheba11")
     const userCollections = database.collection("user")
     const requestCollection = database.collection("request")
+    const paymentsCollection = database.collection("payments")
 
     app.post("/users", async(req,res)=>{
         const userInfo = req.body;
@@ -226,22 +232,23 @@ async function run() {
     data: result,
   });
 });
-// Backend: Update a request
+
+
 app.patch("/requests/:id", verifyFBToken, async (req, res) => {
   try {
-    const id = req.params.id; // URL থেকে id
-    const updateData = req.body; // frontend থেকে পাঠানো data
+    const id = req.params.id;
+    const updateData = req.body;
 
     console.log("PATCH id:", id);
     console.log("PATCH body:", updateData);
 
-    // MongoDB update
+ 
     const result = await requestCollection.updateOne(
-      { _id: new ObjectId(id) }, // ensure ObjectId
+      { _id: new ObjectId(id) },
       { $set: { ...updateData, updatedAt: new Date() } }
     );
 
-    // Send response
+
     res.send({
       matchedCount: result.matchedCount,
       modifiedCount: result.modifiedCount,
@@ -280,38 +287,93 @@ app.patch("/users/:email", verifyFBToken, async (req, res) => {
   res.send(result);
 });
 
-app.get("/search-request", async (req, res) => {
-  const { blood, district, upazila } = req.query;
+app.get("/search-requests", async (req, res)=>{
+  const {bloodGroup, district, upazila } = req.query;
 
-  const orConditions = [];
+  const query = {};
 
-  if (blood) {
-    orConditions.push({ bloodGroup: blood });
+  if(!query){
+    return;
   }
-
-  if (district) {
-    orConditions.push({
-      district: { $regex: district.trim(), $options: "i" }
-    });
+  if(bloodGroup){
+    const fixed = bloodGroup.replace(/ /g, "+").trim();
   }
-
-  if (upazila) {
-    orConditions.push({
-      upazila: { $regex: upazila.trim(), $options: "i" }
-    });
+  if(district){
+    query.district = district;
   }
-
-  const query =
-    orConditions.length > 0 ? { $or: orConditions } : {};
-
-  console.log("FINAL QUERY:", query);
+  if(upazila){
+    query.upazila = upazila
+  }
 
   const result = await requestCollection.find(query).toArray();
-  res.send(result);
+  res.send(result)
+})
+
+
+// payment //
+
+app.post("/create-payment-checkout", async(req,res)=>{
+   const information = req.body;
+   const amount = parseInt(information.donateAmount) * 100;
+
+   const session = await stripe.checkout.sessions.create({
+  
+  line_items: [
+    {
+      price_data: {
+        currency: "usd",
+        unit_amount: amount,
+        product_data:{
+          name: "please Donate"
+        }
+      },
+      quantity: 1,
+    },
+  ],
+  mode: 'payment',
+  metadata:{
+    donorName:information?.donorName
+  },
+  customer_email: information?.donorEmail,
+  success_url: `${process.env.SITE_DOMAIN}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+  cancel_url: `${process.env.SITE_DOMAIN}/payment-cancel`,
 });
+   res.send({url: session.url})
+})
 
+app.post("/success-payment", async (req, res) => {
+  try {
+    const { session_id } = req.query;
+    const session = await stripe.checkout.sessions.retrieve(session_id);
 
+    const transactionId = session.payment_intent;
 
+    const isPaymentExist = await paymentsCollection.findOne({ transactionId });
+
+    if (isPaymentExist) {
+      return res.status(200).send({ message: "Payment already exists" });
+    }
+
+    if (session.payment_status === "paid") {
+      const paymentInfo = {
+        amount: session.amount_total / 100,
+        currency: session.currency,
+        donorEmail: session.customer_email,
+        transactionId,
+        payment_status: session.payment_status,
+        paidAt: new Date(),
+      };
+
+      const result = await paymentsCollection.insertOne(paymentInfo);
+      return res.status(200).send({ message: "Payment recorded", result });
+    }
+
+    return res.status(400).send({ message: "Payment not completed" });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).send({ message: "Server error" });
+  }
+});
 
 
 
