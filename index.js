@@ -83,7 +83,7 @@ async function run() {
       const {email} = req.params
       console.log(email);
 
-// parameter
+
       const query = {email:email}
         const result = await userCollections.findOne(query)
         console.log(result);
