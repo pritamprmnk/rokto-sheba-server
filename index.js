@@ -260,7 +260,11 @@ app.patch("/requests/:id", verifyFBToken, async (req, res) => {
 });
 
 
-
+app.patch("/users/:email", verifyFBToken, async (req, res) => {
+  const email = req.params.email;
+  if (email !== req.decoded_email) {
+    return res.status(403).send({ message: "Forbidden access" });
+  }
 
   const updatedData = req.body;
 
