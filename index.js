@@ -73,10 +73,7 @@ async function run() {
 
     })
 
-    app.get("/users", verifyFBToken, async (req,res)=>{
-      const result = await userCollections.find().toArray();
-      res.status(200).send(result)
-    })
+
 
 
     app.get("/users/role/:email",async(req,res)=>{
@@ -188,7 +185,13 @@ async function run() {
       });
       res.send(result);
     });
-
+   app.delete("/requests/:id", verifyFBToken, async (req, res) => {
+     const id = req.params.id;
+     const result = await requestCollection.deleteOne({
+       _id: new ObjectId(id)
+     });
+     res.send(result);
+   });
 
    app.get("/all-requests", verifyFBToken, async (req, res) => {
      const page = parseInt(req.query.page) || 1;
