@@ -260,11 +260,7 @@ app.patch("/requests/:id", verifyFBToken, async (req, res) => {
 });
 
 
-app.patch("/users/:email", verifyFBToken, async (req, res) => {
-  const email = req.params.email;
-  if (email !== req.decoded_email) {
-    return res.status(403).send({ message: "Forbidden access" });
-  }
+
 
   const updatedData = req.body;
 
@@ -287,7 +283,27 @@ app.patch("/users/:email", verifyFBToken, async (req, res) => {
   res.send(result);
 });
 
+app.get("/search-requests", async (req, res)=>{
+  const {bloodGroup, district, upazila } = req.query;
 
+  const query = {};
+
+  if(!query){
+    return;
+  }
+  if(bloodGroup){
+    const fixed = bloodGroup.replace(/ /g, "+").trim();
+  }
+  if(district){
+    query.district = district;
+  }
+  if(upazila){
+    query.upazila = upazila
+  }
+
+  const result = await requestCollection.find(query).toArray();
+  res.send(result)
+})
 
 
 // payment //
